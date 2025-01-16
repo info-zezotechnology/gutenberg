@@ -5,7 +5,7 @@ import type { ForwardedRef } from 'react';
 import { colord, extend } from 'colord';
 import namesPlugin from 'colord/plugins/names';
 import a11yPlugin from 'colord/plugins/a11y';
-import classnames from 'classnames';
+import clsx from 'clsx';
 
 /**
  * WordPress dependencies
@@ -32,7 +32,7 @@ import type {
 	PaletteObject,
 	SinglePaletteProps,
 } from './types';
-import type { WordPressComponentProps } from '../ui/context';
+import type { WordPressComponentProps } from '../context';
 import type { DropdownProps } from '../dropdown/types';
 import {
 	extractColorNameFromCurrentValue,
@@ -48,7 +48,7 @@ function SinglePalette( {
 	colors,
 	onChange,
 	value,
-	...otherProps
+	...additionalProps
 }: SinglePaletteProps ) {
 	const colorOptions = useMemo( () => {
 		return colors.map( ( { color, name }, index ) => {
@@ -79,13 +79,6 @@ function SinglePalette( {
 					onClick={
 						isSelected ? clearColor : () => onChange( color, index )
 					}
-					aria-label={
-						name
-							? // translators: %s: The name of the color e.g: "vivid red".
-							  sprintf( __( 'Color: %s' ), name )
-							: // translators: %s: color hex code e.g: "#f00".
-							  sprintf( __( 'Color code: %s' ), color )
-					}
 				/>
 			);
 		} );
@@ -95,7 +88,7 @@ function SinglePalette( {
 		<CircularOptionPicker.OptionGroup
 			className={ className }
 			options={ colorOptions }
-			{ ...otherProps }
+			{ ...additionalProps }
 		/>
 	);
 }
@@ -147,6 +140,10 @@ export function CustomColorPickerDropdown( {
 	const popoverProps = useMemo< DropdownProps[ 'popoverProps' ] >(
 		() => ( {
 			shift: true,
+			// Disabling resize as it would otherwise cause the popover to show
+			// scrollbars while dragging the color picker's handle close to the
+			// popover edge.
+			resize: false,
 			...( isRenderedInSidebar
 				? {
 						// When in the sidebar: open to the left (stacking),
@@ -178,6 +175,8 @@ function UnforwardedColorPalette(
 	forwardedRef: ForwardedRef< any >
 ) {
 	const {
+		asButtons,
+		loop,
 		clearable = true,
 		colors = [],
 		disableCustomColors = false,
@@ -188,7 +187,7 @@ function UnforwardedColorPalette(
 		headingLevel = 2,
 		'aria-label': ariaLabel,
 		'aria-labelledby': ariaLabelledby,
-		...otherProps
+		...additionalProps
 	} = props;
 	const [ normalizedColorValue, setNormalizedColorValue ] = useState( value );
 
@@ -227,7 +226,7 @@ function UnforwardedColorPalette(
 	const displayValue = value?.replace( /^var\((.+)\)$/, '$1' );
 	const customColorAccessibleLabel = !! displayValue
 		? sprintf(
-				// translators: %1$s: The name of the color e.g: "vivid red". %2$s: The color's hex code e.g: "#f00".
+				// translators: 1: The name of the color e.g: "vivid red". 2: The color's hex code e.g: "#f00".
 				__(
 					'Custom color picker. The currently selected color is called "%1$s" and has a value of "%2$s".'
 				),
@@ -243,22 +242,45 @@ function UnforwardedColorPalette(
 	};
 
 	const actions = !! clearable && (
-		<CircularOptionPicker.ButtonAction onClick={ clearColor }>
+		<CircularOptionPicker.ButtonAction
+			onClick={ clearColor }
+			accessibleWhenDisabled
+			disabled={ ! value }
+		>
 			{ __( 'Clear' ) }
 		</CircularOptionPicker.ButtonAction>
 	);
 
-	let ariaProps: { 'aria-label': string } | { 'aria-labelledby': string };
-	if ( ariaLabel ) {
-		ariaProps = { 'aria-label': ariaLabel };
-	} else if ( ariaLabelledby ) {
-		ariaProps = { 'aria-labelledby': ariaLabelledby };
+	let metaProps:
+		| { asButtons: false; loop?: boolean; 'aria-label': string }
+		| { asButtons: false; loop?: boolean; 'aria-labelledby': string }
+		| { asButtons: true };
+
+	if ( asButtons ) {
+		metaProps = { asButtons: true };
 	} else {
-		ariaProps = { 'aria-label': __( 'Custom color picker.' ) };
+		const _metaProps: { asButtons: false; loop?: boolean } = {
+			asButtons: false,
+			loop,
+		};
+
+		if ( ariaLabel ) {
+			metaProps = { ..._metaProps, 'aria-label': ariaLabel };
+		} else if ( ariaLabelledby ) {
+			metaProps = {
+				..._metaProps,
+				'aria-labelledby': ariaLabelledby,
+			};
+		} else {
+			metaProps = {
+				..._metaProps,
+				'aria-label': __( 'Custom color picker.' ),
+			};
+		}
 	}
 
 	return (
-		<VStack spacing={ 3 } ref={ forwardedRef } { ...otherProps }>
+		<VStack spacing={ 3 } ref={ forwardedRef } { ...additionalProps }>
 			{ ! disableCustomColors && (
 				<CustomColorPickerDropdown
 					isRenderedInSidebar={ __experimentalIsRenderedInSidebar }
@@ -278,6 +300,7 @@ function UnforwardedColorPalette(
 								style={ {
 									background: value,
 								} }
+								type="button"
 							/>
 							<VStack
 								className="components-color-palette__custom-color-text-wrapper"
@@ -286,7 +309,7 @@ function UnforwardedColorPalette(
 								<Truncate className="components-color-palette__custom-color-name">
 									{ value
 										? buttonLabelName
-										: 'No color selected' }
+										: __( 'No color selected' ) }
 								</Truncate>
 								{ /*
 								This `Truncate` is always rendered, even if
@@ -294,7 +317,7 @@ function UnforwardedColorPalette(
 								does not shift
 								*/ }
 								<Truncate
-									className={ classnames(
+									className={ clsx(
 										'components-color-palette__custom-color-value',
 										{
 											'components-color-palette__custom-color-value--is-hex':
@@ -309,26 +332,28 @@ function UnforwardedColorPalette(
 					) }
 				/>
 			) }
-			<CircularOptionPicker
-				{ ...ariaProps }
-				actions={ actions }
-				options={
-					hasMultipleColorOrigins ? (
-						<MultiplePalettes
-							{ ...paletteCommonProps }
-							headingLevel={ headingLevel }
-							colors={ colors as PaletteObject[] }
-							value={ value }
-						/>
-					) : (
-						<SinglePalette
-							{ ...paletteCommonProps }
-							colors={ colors as ColorObject[] }
-							value={ value }
-						/>
-					)
-				}
-			/>
+			{ ( colors.length > 0 || actions ) && (
+				<CircularOptionPicker
+					{ ...metaProps }
+					actions={ actions }
+					options={
+						hasMultipleColorOrigins ? (
+							<MultiplePalettes
+								{ ...paletteCommonProps }
+								headingLevel={ headingLevel }
+								colors={ colors as PaletteObject[] }
+								value={ value }
+							/>
+						) : (
+							<SinglePalette
+								{ ...paletteCommonProps }
+								colors={ colors as ColorObject[] }
+								value={ value }
+							/>
+						)
+					}
+				/>
+			) }
 		</VStack>
 	);
 }
