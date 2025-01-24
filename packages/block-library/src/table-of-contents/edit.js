@@ -10,23 +10,27 @@ import {
 } from '@wordpress/block-editor';
 import { createBlock } from '@wordpress/blocks';
 import {
-	PanelBody,
 	Placeholder,
 	ToggleControl,
 	ToolbarButton,
 	ToolbarGroup,
+	__experimentalToolsPanel as ToolsPanel,
+	__experimentalToolsPanelItem as ToolsPanelItem,
 } from '@wordpress/components';
 import { useDispatch, useSelect } from '@wordpress/data';
 import { renderToString } from '@wordpress/element';
 import { __ } from '@wordpress/i18n';
+import { useInstanceId } from '@wordpress/compose';
+import { store as noticeStore } from '@wordpress/notices';
+import { tableOfContents as icon } from '@wordpress/icons';
 
 /**
  * Internal dependencies
  */
-import icon from './icon';
 import TableOfContentsList from './list';
 import { linearToNestedHeadingList } from './utils';
 import { useObserveHeadings } from './hooks';
+import { useToolsPanelDropdownMenuProps } from '../utils/hooks';
 
 /** @typedef {import('./utils').HeadingData} HeadingData */
 
@@ -40,7 +44,7 @@ import { useObserveHeadings } from './hooks';
  * @param {string}                       props.clientId
  * @param {(attributes: Object) => void} props.setAttributes
  *
- * @return {WPComponent} The component.
+ * @return {Component} The component.
  */
 export default function TableOfContentsEdit( {
 	attributes: { headings = [], onlyIncludeCurrentPage },
@@ -50,6 +54,20 @@ export default function TableOfContentsEdit( {
 	useObserveHeadings( clientId );
 
 	const blockProps = useBlockProps();
+	const instanceId = useInstanceId(
+		TableOfContentsEdit,
+		'table-of-contents'
+	);
+
+	// If a user clicks to a link prevent redirection and show a warning.
+	const { createWarningNotice } = useDispatch( noticeStore );
+	const showRedirectionPreventedNotice = ( event ) => {
+		event.preventDefault();
+		createWarningNotice( __( 'Links are disabled in the editor.' ), {
+			id: `block-library/core/table-of-contents/redirection-prevented/${ instanceId }`,
+			type: 'snackbar',
+		} );
+	};
 
 	const canInsertList = useSelect(
 		( select ) => {
@@ -63,7 +81,7 @@ export default function TableOfContentsEdit( {
 	);
 
 	const { replaceBlocks } = useDispatch( blockEditorStore );
-
+	const dropdownMenuProps = useToolsPanelDropdownMenuProps();
 	const headingTree = linearToNestedHeadingList( headings );
 
 	const toolbarControls = canInsertList && (
@@ -92,25 +110,42 @@ export default function TableOfContentsEdit( {
 
 	const inspectorControls = (
 		<InspectorControls>
-			<PanelBody title={ __( 'Settings' ) }>
-				<ToggleControl
-					__nextHasNoMarginBottom
+			<ToolsPanel
+				label={ __( 'Settings' ) }
+				resetAll={ () => {
+					setAttributes( {
+						onlyIncludeCurrentPage: false,
+					} );
+				} }
+				dropdownMenuProps={ dropdownMenuProps }
+			>
+				<ToolsPanelItem
+					hasValue={ () => !! onlyIncludeCurrentPage }
 					label={ __( 'Only include current page' ) }
-					checked={ onlyIncludeCurrentPage }
-					onChange={ ( value ) =>
-						setAttributes( { onlyIncludeCurrentPage: value } )
+					onDeselect={ () =>
+						setAttributes( { onlyIncludeCurrentPage: false } )
 					}
-					help={
-						onlyIncludeCurrentPage
-							? __(
-									'Only including headings from the current page (if the post is paginated).'
-							  )
-							: __(
-									'Toggle to only include headings from the current page (if the post is paginated).'
-							  )
-					}
-				/>
-			</PanelBody>
+					isShownByDefault
+				>
+					<ToggleControl
+						__nextHasNoMarginBottom
+						label={ __( 'Only include current page' ) }
+						checked={ onlyIncludeCurrentPage }
+						onChange={ ( value ) =>
+							setAttributes( { onlyIncludeCurrentPage: value } )
+						}
+						help={
+							onlyIncludeCurrentPage
+								? __(
+										'Only including headings from the current page (if the post is paginated).'
+								  )
+								: __(
+										'Include headings from all pages (if the post is paginated).'
+								  )
+						}
+					/>
+				</ToolsPanelItem>
+			</ToolsPanel>
 		</InspectorControls>
 	);
 
@@ -137,8 +172,12 @@ export default function TableOfContentsEdit( {
 	return (
 		<>
 			<nav { ...blockProps }>
-				<ol inert="true">
-					<TableOfContentsList nestedHeadingList={ headingTree } />
+				<ol>
+					<TableOfContentsList
+						nestedHeadingList={ headingTree }
+						disableLinkActivation
+						onClick={ showRedirectionPreventedNotice }
+					/>
 				</ol>
 			</nav>
 			{ toolbarControls }

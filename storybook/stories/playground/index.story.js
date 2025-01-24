@@ -1,54 +1,10 @@
 /**
- * WordPress dependencies
- */
-import { useEffect, useState } from '@wordpress/element';
-import {
-	BlockCanvas,
-	BlockEditorProvider,
-	BlockTools,
-	BlockInspector,
-} from '@wordpress/block-editor';
-import { registerCoreBlocks } from '@wordpress/block-library';
-import '@wordpress/format-library';
-
-/**
  * Internal dependencies
  */
-import styles from './style.lazy.scss';
-import { editorStyles } from './editor-styles';
-
-function App() {
-	const [ blocks, updateBlocks ] = useState( [] );
-
-	useEffect( () => {
-		registerCoreBlocks();
-	}, [] );
-
-	// Ensures that the CSS intended for the playground (especially the style resets)
-	// are only loaded for the playground and don't leak into other stories.
-	useEffect( () => {
-		styles.use();
-
-		return styles.unuse;
-	} );
-
-	return (
-		<div className="playground">
-			<BlockEditorProvider
-				value={ blocks }
-				onInput={ updateBlocks }
-				onChange={ updateBlocks }
-			>
-				<div className="playground__sidebar">
-					<BlockInspector />
-				</div>
-				<BlockTools className="playground__content">
-					<BlockCanvas height="100%" styles={ editorStyles } />
-				</BlockTools>
-			</BlockEditorProvider>
-		</div>
-	);
-}
+import EditorFullPage from './fullpage';
+import EditorBox from './box';
+import EditorWithUndoRedo from './with-undo-redo';
+import EditorZoomOut from './zoom-out';
 
 export default {
 	title: 'Playground/Block Editor',
@@ -58,5 +14,36 @@ export default {
 };
 
 export const _default = () => {
-	return <App />;
+	return <EditorFullPage />;
+};
+
+_default.parameters = {
+	sourceLink: 'storybook/stories/playground/fullpage/index.js',
+};
+
+export const Box = () => {
+	return <EditorBox />;
+};
+
+Box.parameters = {
+	sourceLink: 'storybook/stories/playground/box/index.js',
+};
+
+export const UndoRedo = () => {
+	return <EditorWithUndoRedo />;
+};
+
+UndoRedo.parameters = {
+	sourceLink: 'storybook/stories/playground/with-undo-redo/index.js',
+};
+
+export const ZoomOut = ( props ) => {
+	return <EditorZoomOut { ...props } />;
+};
+
+ZoomOut.parameters = {
+	sourceLink: 'storybook/stories/playground/zoom-out/index.js',
+};
+ZoomOut.argTypes = {
+	zoomLevel: { control: { type: 'range', min: 10, max: 100, step: 5 } },
 };
