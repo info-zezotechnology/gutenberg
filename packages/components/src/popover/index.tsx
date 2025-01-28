@@ -2,7 +2,7 @@
  * External dependencies
  */
 import type { ForwardedRef, SyntheticEvent, RefCallback } from 'react';
-import classnames from 'classnames';
+import clsx from 'clsx';
 import {
 	useFloating,
 	flip as flipMiddleware,
@@ -13,10 +13,8 @@ import {
 	offset as offsetMiddleware,
 	size,
 } from '@floating-ui/react-dom';
-// eslint-disable-next-line no-restricted-imports
 import type { HTMLMotionProps, MotionProps } from 'framer-motion';
-// eslint-disable-next-line no-restricted-imports
-import { motion, useReducedMotion } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 /**
  * WordPress dependencies
@@ -33,6 +31,7 @@ import {
 	createPortal,
 } from '@wordpress/element';
 import {
+	useReducedMotion,
 	useViewportMatch,
 	useMergeRefs,
 	__experimentalUseDialog as useDialog,
@@ -40,7 +39,7 @@ import {
 import { close } from '@wordpress/icons';
 import deprecated from '@wordpress/deprecated';
 import { Path, SVG } from '@wordpress/primitives';
-import { getScrollContainer } from '@wordpress/dom';
+import { __ } from '@wordpress/i18n';
 
 /**
  * Internal dependencies
@@ -52,16 +51,17 @@ import {
 	computePopoverPosition,
 	positionToPlacement,
 	placementToMotionAnimationProps,
-	getReferenceOwnerDocument,
 	getReferenceElement,
 } from './utils';
-import type { WordPressComponentProps } from '../ui/context';
+import { contextConnect, useContextSystem } from '../context';
+import type { WordPressComponentProps } from '../context';
 import type {
 	PopoverProps,
 	PopoverAnchorRefReference,
 	PopoverAnchorRefTopBottom,
 } from './types';
 import { overlayMiddlewares } from './overlay-middlewares';
+import { StyleProvider } from '../style-provider';
 
 /**
  * Name of slot in which popover should fill.
@@ -77,7 +77,7 @@ export const SLOT_NAME = 'Popover';
 const ArrowTriangle = () => (
 	<SVG
 		xmlns="http://www.w3.org/2000/svg"
-		viewBox={ `0 0 100 100` }
+		viewBox="0 0 100 100"
 		className="components-popover__triangle"
 		role="presentation"
 	>
@@ -114,14 +114,16 @@ const UnforwardedPopover = (
 		WordPressComponentProps< PopoverProps, 'div', false >,
 		// To avoid overlaps between the standard HTML attributes and the props
 		// expected by `framer-motion`, omit all framer motion props from popover
-		// props (except for `animate` and `children`, which are re-defined in `PopoverProps`).
-		keyof Omit< MotionProps, 'animate' | 'children' >
+		// props (except for `animate` and `children` which are re-defined in
+		// `PopoverProps`, and `style` which is merged safely).
+		keyof Omit< MotionProps, 'animate' | 'children' | 'style' >
 	>,
 	forwardedRef: ForwardedRef< any >
 ) => {
 	const {
 		animate = true,
 		headerTitle,
+		constrainTabbing,
 		onClose,
 		children,
 		className,
@@ -139,6 +141,7 @@ const UnforwardedPopover = (
 		shift = false,
 		inline = false,
 		variant,
+		style: contentStyle,
 
 		// Deprecated props
 		__unstableForcePosition,
@@ -149,7 +152,7 @@ const UnforwardedPopover = (
 
 		// Rest
 		...contentProps
-	} = props;
+	} = useContextSystem( props, 'Popover' );
 
 	let computedFlipProp = flip;
 	let computedResizeProp = resize;
@@ -199,9 +202,6 @@ const UnforwardedPopover = (
 
 	const [ fallbackReferenceElement, setFallbackReferenceElement ] =
 		useState< HTMLSpanElement | null >( null );
-	const [ referenceOwnerDocument, setReferenceOwnerDocument ] = useState<
-		Document | undefined
-	>();
 
 	const anchorRefFallback: RefCallback< HTMLSpanElement > = useCallback(
 		( node ) => {
@@ -227,8 +227,9 @@ const UnforwardedPopover = (
 					const { firstElementChild } = refs.floating.current ?? {};
 
 					// Only HTMLElement instances have the `style` property.
-					if ( ! ( firstElementChild instanceof HTMLElement ) )
+					if ( ! ( firstElementChild instanceof HTMLElement ) ) {
 						return;
+					}
 
 					// Reduce the height of the popover to the available space.
 					Object.assign( firstElementChild.style, {
@@ -263,6 +264,7 @@ const UnforwardedPopover = (
 	}
 
 	const [ dialogRef, dialogProps ] = useDialog( {
+		constrainTabbing,
 		focusOnMount,
 		__unstableOnClose: onDialogClose,
 		// @ts-expect-error The __unstableOnClose property needs to be deprecated first (see https://github.com/WordPress/gutenberg/pull/27675)
@@ -315,15 +317,6 @@ const UnforwardedPopover = (
 		?.current;
 
 	useLayoutEffect( () => {
-		const resultingReferenceOwnerDoc = getReferenceOwnerDocument( {
-			anchor,
-			anchorRef,
-			anchorRect,
-			getAnchorRect,
-			fallbackReferenceElement,
-			fallbackDocument: document,
-		} );
-
 		const resultingReferenceElement = getReferenceElement( {
 			anchor,
 			anchorRef,
@@ -333,8 +326,6 @@ const UnforwardedPopover = (
 		} );
 
 		refs.setReference( resultingReferenceElement );
-
-		setReferenceOwnerDocument( resultingReferenceOwnerDoc );
 	}, [
 		anchor,
 		anchorRef,
@@ -347,33 +338,6 @@ const UnforwardedPopover = (
 		fallbackReferenceElement,
 		refs,
 	] );
-
-	// If the reference element is in a different ownerDocument (e.g. iFrame),
-	// we need to manually update the floating's position as the reference's owner
-	// document scrolls.
-	useLayoutEffect( () => {
-		if (
-			! referenceOwnerDocument ||
-			! referenceOwnerDocument.defaultView
-		) {
-			return;
-		}
-
-		const { defaultView } = referenceOwnerDocument;
-		const { frameElement } = defaultView;
-
-		const scrollContainer = frameElement
-			? getScrollContainer( frameElement )
-			: null;
-
-		defaultView.addEventListener( 'resize', update );
-		scrollContainer?.addEventListener( 'scroll', update );
-
-		return () => {
-			defaultView.removeEventListener( 'resize', update );
-			scrollContainer?.removeEventListener( 'scroll', update );
-		};
-	}, [ referenceOwnerDocument, update ] );
 
 	const mergedFloatingRef = useMergeRefs( [
 		refs.setFloating,
@@ -409,6 +373,7 @@ const UnforwardedPopover = (
 	const animationProps: HTMLMotionProps< 'div' > = shouldAnimate
 		? {
 				style: {
+					...contentStyle,
 					...motionInlineStyles,
 					...style,
 				},
@@ -417,7 +382,10 @@ const UnforwardedPopover = (
 		  }
 		: {
 				animate: false,
-				style,
+				style: {
+					...contentStyle,
+					...style,
+				},
 		  };
 
 	// When Floating UI has finished positioning and Framer Motion has finished animating
@@ -427,7 +395,7 @@ const UnforwardedPopover = (
 
 	let content = (
 		<motion.div
-			className={ classnames( 'components-popover', className, {
+			className={ clsx( className, {
 				'is-expanded': isExpanded,
 				'is-positioned': isPositioned,
 				// Use the 'alternate' classname for 'toolbar' variant for back compat.
@@ -452,8 +420,10 @@ const UnforwardedPopover = (
 					</span>
 					<Button
 						className="components-popover__close"
+						size="small"
 						icon={ close }
 						onClick={ onClose }
+						label={ __( 'Close' ) }
 					/>
 				</div>
 			) }
@@ -490,7 +460,10 @@ const UnforwardedPopover = (
 	if ( shouldRenderWithinSlot ) {
 		content = <Fill name={ slotName }>{ content }</Fill>;
 	} else if ( ! inline ) {
-		content = createPortal( content, getPopoverFallbackContainer() );
+		content = createPortal(
+			<StyleProvider document={ document }>{ content }</StyleProvider>,
+			getPopoverFallbackContainer()
+		);
 	}
 
 	if ( hasAnchor ) {
@@ -528,7 +501,7 @@ const UnforwardedPopover = (
  * ```
  *
  */
-export const Popover = forwardRef( UnforwardedPopover );
+export const Popover = contextConnect( UnforwardedPopover, 'Popover' );
 
 function PopoverSlot(
 	{ name = SLOT_NAME }: { name?: string },
@@ -536,7 +509,6 @@ function PopoverSlot(
 ) {
 	return (
 		<Slot
-			// @ts-expect-error Need to type `SlotFill`
 			bubblesVirtually
 			name={ name }
 			className="popover-slot"
