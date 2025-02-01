@@ -4,7 +4,6 @@
 import { __, sprintf } from '@wordpress/i18n';
 import { useInstanceId } from '@wordpress/compose';
 import { useCallback, useMemo } from '@wordpress/element';
-import deprecated from '@wordpress/deprecated';
 
 /**
  * Internal dependencies
@@ -13,7 +12,6 @@ import CircularOptionPicker from '../circular-option-picker';
 import CustomGradientPicker from '../custom-gradient-picker';
 import { VStack } from '../v-stack';
 import { ColorHeading } from '../color-palette/styles';
-import { Spacer } from '../spacer';
 import type {
 	GradientPickerComponentProps,
 	PickerProps,
@@ -41,12 +39,12 @@ function SingleOrigin( {
 	gradients,
 	onChange,
 	value,
-	...otherProps
+	...additionalProps
 }: PickerProps< GradientObject > ) {
 	const gradientOptions = useMemo( () => {
-		return gradients.map( ( { gradient, name }, index ) => (
+		return gradients.map( ( { gradient, name, slug }, index ) => (
 			<CircularOptionPicker.Option
-				key={ gradient }
+				key={ slug }
 				value={ gradient }
 				isSelected={ value === gradient }
 				tooltipText={
@@ -74,7 +72,7 @@ function SingleOrigin( {
 		<CircularOptionPicker.OptionGroup
 			className={ className }
 			options={ gradientOptions }
-			{ ...otherProps }
+			{ ...additionalProps }
 		/>
 	);
 }
@@ -116,30 +114,51 @@ function MultipleOrigin( {
 
 function Component( props: PickerProps< any > ) {
 	const {
+		asButtons,
+		loop,
 		actions,
 		headingLevel,
 		'aria-label': ariaLabel,
 		'aria-labelledby': ariaLabelledby,
-		...otherProps
+		...additionalProps
 	} = props;
 	const options = isMultipleOriginArray( props.gradients ) ? (
-		<MultipleOrigin headingLevel={ headingLevel } { ...otherProps } />
+		<MultipleOrigin headingLevel={ headingLevel } { ...additionalProps } />
 	) : (
-		<SingleOrigin { ...otherProps } />
+		<SingleOrigin { ...additionalProps } />
 	);
 
-	let ariaProps: { 'aria-label': string } | { 'aria-labelledby': string };
-	if ( ariaLabel ) {
-		ariaProps = { 'aria-label': ariaLabel };
-	} else if ( ariaLabelledby ) {
-		ariaProps = { 'aria-labelledby': ariaLabelledby };
+	let metaProps:
+		| { asButtons: false; loop?: boolean; 'aria-label': string }
+		| { asButtons: false; loop?: boolean; 'aria-labelledby': string }
+		| { asButtons: true };
+
+	if ( asButtons ) {
+		metaProps = { asButtons: true };
 	} else {
-		ariaProps = { 'aria-label': __( 'Custom gradient picker.' ) };
+		const _metaProps: { asButtons: false; loop?: boolean } = {
+			asButtons: false,
+			loop,
+		};
+
+		if ( ariaLabel ) {
+			metaProps = { ..._metaProps, 'aria-label': ariaLabel };
+		} else if ( ariaLabelledby ) {
+			metaProps = {
+				..._metaProps,
+				'aria-labelledby': ariaLabelledby,
+			};
+		} else {
+			metaProps = {
+				..._metaProps,
+				'aria-label': __( 'Custom color picker.' ),
+			};
+		}
 	}
 
 	return (
 		<CircularOptionPicker
-			{ ...ariaProps }
+			{ ...metaProps }
 			actions={ actions }
 			options={ options }
 		/>
@@ -147,116 +166,100 @@ function Component( props: PickerProps< any > ) {
 }
 
 /**
- *  GradientPicker is a React component that renders a color gradient picker to
+ * GradientPicker is a React component that renders a color gradient picker to
  * define a multi step gradient. There's either a _linear_ or a _radial_ type
  * available.
  *
  * ```jsx
- *import { GradientPicker } from '@wordpress/components';
- *import { useState } from '@wordpress/element';
+ * import { useState } from 'react';
+ * import { GradientPicker } from '@wordpress/components';
  *
- *const myGradientPicker = () => {
- *	const [ gradient, setGradient ] = useState( null );
+ * const MyGradientPicker = () => {
+ *   const [ gradient, setGradient ] = useState( null );
  *
- *	return (
- *		<GradientPicker
- *			__nextHasNoMargin
- *			value={ gradient }
- *			onChange={ ( currentGradient ) => setGradient( currentGradient ) }
- *			gradients={ [
- *				{
- *					name: 'JShine',
- *					gradient:
- *						'linear-gradient(135deg,#12c2e9 0%,#c471ed 50%,#f64f59 100%)',
- *					slug: 'jshine',
- *				},
- *				{
- *					name: 'Moonlit Asteroid',
- *					gradient:
- *						'linear-gradient(135deg,#0F2027 0%, #203A43 0%, #2c5364 100%)',
- *					slug: 'moonlit-asteroid',
- *				},
- *				{
- *					name: 'Rastafarie',
- *					gradient:
- *						'linear-gradient(135deg,#1E9600 0%, #FFF200 0%, #FF0000 100%)',
- *					slug: 'rastafari',
- *				},
- *			] }
- *		/>
- *	);
- *};
+ *   return (
+ *     <GradientPicker
+ *       value={ gradient }
+ *       onChange={ ( currentGradient ) => setGradient( currentGradient ) }
+ *       gradients={ [
+ *         {
+ *           name: 'JShine',
+ *           gradient:
+ *             'linear-gradient(135deg,#12c2e9 0%,#c471ed 50%,#f64f59 100%)',
+ *           slug: 'jshine',
+ *         },
+ *         {
+ *           name: 'Moonlit Asteroid',
+ *           gradient:
+ *             'linear-gradient(135deg,#0F2027 0%, #203A43 0%, #2c5364 100%)',
+ *           slug: 'moonlit-asteroid',
+ *         },
+ *         {
+ *           name: 'Rastafarie',
+ *           gradient:
+ *             'linear-gradient(135deg,#1E9600 0%, #FFF200 0%, #FF0000 100%)',
+ *           slug: 'rastafari',
+ *         },
+ *       ] }
+ *     />
+ *   );
+ * };
  *```
  *
  */
 export function GradientPicker( {
-	/** Start opting into the new margin-free styles that will become the default in a future version. */
-	__nextHasNoMargin = false,
 	className,
 	gradients = [],
 	onChange,
 	value,
 	clearable = true,
+	enableAlpha = true,
 	disableCustomGradients = false,
 	__experimentalIsRenderedInSidebar,
 	headingLevel = 2,
+	...additionalProps
 }: GradientPickerComponentProps ) {
 	const clearGradient = useCallback(
 		() => onChange( undefined ),
 		[ onChange ]
 	);
 
-	if ( ! __nextHasNoMargin ) {
-		deprecated( 'Outer margin styles for wp.components.GradientPicker', {
-			since: '6.1',
-			version: '6.4',
-			hint: 'Set the `__nextHasNoMargin` prop to true to start opting into the new styles, which will become the default in a future version',
-		} );
-	}
-
-	const deprecatedMarginSpacerProps = ! __nextHasNoMargin
-		? {
-				marginTop: ! gradients.length ? 3 : undefined,
-				marginBottom: ! clearable ? 6 : 0,
-		  }
-		: {};
-
 	return (
-		// Outmost Spacer wrapper can be removed when deprecation period is over
-		<Spacer marginBottom={ 0 } { ...deprecatedMarginSpacerProps }>
-			<VStack spacing={ gradients.length ? 4 : 0 }>
-				{ ! disableCustomGradients && (
-					<CustomGradientPicker
-						__nextHasNoMargin
-						__experimentalIsRenderedInSidebar={
-							__experimentalIsRenderedInSidebar
-						}
-						value={ value }
-						onChange={ onChange }
-					/>
-				) }
-				{ ( gradients.length || clearable ) && (
-					<Component
-						className={ className }
-						clearGradient={ clearGradient }
-						gradients={ gradients }
-						onChange={ onChange }
-						value={ value }
-						actions={
-							clearable &&
-							! disableCustomGradients && (
-								<CircularOptionPicker.ButtonAction
-									onClick={ clearGradient }
-								>
-									{ __( 'Clear' ) }
-								</CircularOptionPicker.ButtonAction>
-							)
-						}
-						headingLevel={ headingLevel }
-					/>
-				) }
-			</VStack>
-		</Spacer>
+		<VStack spacing={ gradients.length ? 4 : 0 }>
+			{ ! disableCustomGradients && (
+				<CustomGradientPicker
+					__experimentalIsRenderedInSidebar={
+						__experimentalIsRenderedInSidebar
+					}
+					enableAlpha={ enableAlpha }
+					value={ value }
+					onChange={ onChange }
+				/>
+			) }
+			{ ( gradients.length > 0 || clearable ) && (
+				<Component
+					{ ...additionalProps }
+					className={ className }
+					clearGradient={ clearGradient }
+					gradients={ gradients }
+					onChange={ onChange }
+					value={ value }
+					actions={
+						clearable &&
+						! disableCustomGradients && (
+							<CircularOptionPicker.ButtonAction
+								onClick={ clearGradient }
+								accessibleWhenDisabled
+								disabled={ ! value }
+							>
+								{ __( 'Clear' ) }
+							</CircularOptionPicker.ButtonAction>
+						)
+					}
+					headingLevel={ headingLevel }
+				/>
+			) }
+		</VStack>
 	);
 }
 
